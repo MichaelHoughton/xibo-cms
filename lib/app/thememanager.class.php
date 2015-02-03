@@ -8,7 +8,7 @@
  * Xibo is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
- * any later version. 
+ * any later version.
  *
  * Xibo is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -17,12 +17,12 @@
  *
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
- */ 
+ */
 defined('XIBO') or die("Sorry, you are not allowed to directly access this page.<br /> Please press the back button in your browser.");
 
 class Theme {
 	private static $instance = null;
-	
+
 	private $user;
 	private $helpManager;
 	private $dateManager;
@@ -31,7 +31,7 @@ class Theme {
 	private $pageName = '';
 	private $vars = null;
 	private $config = null;
-	
+
 	public function __construct(user $user, $theme = NULL) {
 
 		// Store some things for the Theme engine to use
@@ -40,12 +40,16 @@ class Theme {
 		$this->dateManager = new DateManager();
 
 		// What is the currently selected theme?
-		$globalTheme = ($theme == NULL) ? Config::GetSetting('GLOBAL_THEME_NAME') : $theme;
+		if (defined('CAKEPHP')) {
+			$globalTheme = 'cakephp';
+		} else {
+			$globalTheme = ($theme == NULL) ? Config::GetSetting('GLOBAL_THEME_NAME') : $theme;
+		}
 
 		// Is this theme valid?
 		if (!is_dir('theme/' . $globalTheme))
 			throw new Exception(__('The theme "%s" does not exist', $globalTheme));
-		
+
 		// Store the theme name for later
 		$this->name = $globalTheme;
 
@@ -76,14 +80,14 @@ class Theme {
 	public static function Render($item) {
 
 		$theme = Theme::GetInstance();
-		
+
 		// See if we have the requested file in the theme folder
 		if (file_exists('theme/' . $theme->name . '/html/' . $item . '.php')) {
 			include('theme/' . $theme->name . '/html/' . $item . '.php');
 		}
 		// Check the module theme folder
 		else if (file_exists('modules/theme/' . $item . '.php')) {
-			include('modules/theme/' . $item . '.php');	
+			include('modules/theme/' . $item . '.php');
 		}
 		// If not, then use the default folder
 		else if (file_exists('theme/default/html/' . $item . '.php')) {
@@ -118,7 +122,7 @@ class Theme {
 	public static function Image($item, $class = '') {
 
 		$theme = Theme::GetInstance();
-		
+
 		// See if we have the requested file in the theme folder
 		if (file_exists('theme/' . $theme->name . '/img/' . $item)) {
 			return '<img ' . (($class != '') ? 'class="' . $class . '"' : '') . ' src="theme/' . $theme->name . '/img/' . $item . '" />';
@@ -138,7 +142,7 @@ class Theme {
 	public static function ImageUrl($item) {
 
 		$theme = Theme::GetInstance();
-		
+
 		// See if we have the requested file in the theme folder
 		if (file_exists('theme/' . $theme->name . '/img/' . $item)) {
 			return 'theme/' . $theme->name . '/img/' . $item;
@@ -158,7 +162,7 @@ class Theme {
 	public static function ItemPath($item) {
 
 		$theme = Theme::GetInstance();
-		
+
 		// See if we have the requested file in the theme folder
 		if (file_exists('theme/' . $theme->name . '/' . $item)) {
 			return 'theme/' . $theme->name . '/' . $item;
@@ -178,7 +182,7 @@ class Theme {
 	public static function Script($item) {
 
 		$theme = Theme::GetInstance();
-		
+
 		// See if we have the requested file in the theme folder
 		if (file_exists('theme/' . $theme->name . '/' . $item)) {
 			return '<script src="theme/' . $theme->name . '/' . $item . '"></script>';
@@ -209,11 +213,11 @@ class Theme {
 	public static function Get($key) {
 		$theme = Theme::GetInstance();
 
-		if (!isset($theme->vars[$key]))			
+		if (!isset($theme->vars[$key]))
 			$return = null;
 		else
 			$return = $theme->vars[$key];
-		
+
 		if ($key == 'form_meta') {
 			// Append a token to the end
 			$return = $return . Kit::Token();
@@ -302,7 +306,7 @@ class Theme {
 
 		if (!$menu = new MenuManager($theme->user, $menu))
 			trigger_error($menu->message, E_USER_ERROR);
-					
+
 		while ($menuItem = $menu->GetNextMenuItem()) {
 			$item = array();
 			$item['page'] = Kit::ValidateParam($menuItem['name'], _WORD);

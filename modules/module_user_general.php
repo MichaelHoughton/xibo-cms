@@ -8,7 +8,7 @@
  * Xibo is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
- * any later version. 
+ * any later version.
  *
  * Xibo is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -19,45 +19,55 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
  defined('XIBO') or die("Sorry, you are not allowed to directly access this page.<br /> Please press the back button in your browser.");
- 
+
 class User {
     private $db;
-        
+
     public $userid;
     public $usertypeid;
     public $userName;
     public $homePage;
-    
+
     public function __construct(database $db = NULL)
     {
         $this->db           =& $db;
-        $this->userid   = Kit::GetParam('userid', _SESSION, _INT);
-        $this->usertypeid   = Kit::GetParam('usertype', _SESSION, _INT);
+
+        if (defined('CAKEPHP') && !empty($_COOKIE['CakeCookie']['xiboId'])) {
+            $this->userid = $_COOKIE['CakeCookie']['xiboId'];
+        } else {
+            $this->userid = Kit::GetParam('userid', _SESSION, _INT);
+        }
+
+        if (defined('CAKEPHP') && !empty($_COOKIE['CakeCookie']['xiboTypeId'])) {
+            $this->usertypeid = $_COOKIE['CakeCookie']['xiboTypeId'];
+        } else {
+            $this->usertypeid = Kit::GetParam('usertype', _SESSION, _INT);
+        }
 
         // We havent authed yet
         $this->authedDisplayGroupIDs = false;
     }
-    
+
     /**
      * Validate the User is Logged In
      * @param $ajax Object[optional] Indicates if this request came from an AJAX call or otherwise
      */
-    function attempt_login($ajax = false) 
+    function attempt_login($ajax = false)
     {
         $db =& $this->db;
-        $userid = Kit::GetParam('userid', _SESSION, _INT);
+        $userid = $this->userid;
 
         // Referring Page is anything after the ?
         $requestUri = rawurlencode(Kit::GetCurrentPage());
-        
-        if (!$this->checkforUserid()) 
+
+        if (!$this->checkforUserid())
         {
             // Log out the user
             if ($userid != 0)
                 $db->query(sprintf("UPDATE user SET loggedin = 0 WHERE userid = %d ", $userid));
 
             // AJAX calls that fail the login test cause a page redirect
-            if ($ajax) 
+            if ($ajax)
             {
                 //create the AJAX request object
                 $response = new ResponseManager();
@@ -65,7 +75,7 @@ class User {
                 $response->Login();
                 $response->Respond();
             }
-            else 
+            else
             {
                 Theme::Set('form_meta', '<input type="hidden" name="token" value="' . CreateFormToken() . '" />');
                 Theme::Set('form_action', 'index.php?q=login&referingPage=' . $requestUri);
@@ -76,40 +86,40 @@ class User {
                 $message = Kit::GetParam('message', _GET, _STRING, Kit::GetParam('message', _SESSION, _STRING, ''));
                 Theme::Set('login_message', $message);
                 Theme::Render('login_page');
-                
+
                 // Clear the session message
                 $_SESSION['message'] = '';
                 exit;
             }
-            
+
             return false;
         }
-        else 
+        else
         {
             //write out to the db that the logged in user has accessed the page still
             $SQL = sprintf("UPDATE user SET lastaccessed = '" . date("Y-m-d H:i:s") . "', loggedin = 1 WHERE userid = %d ", $userid);
-            
+
             $results = $db->query($SQL) or trigger_error("Can not write last accessed info.", E_USER_ERROR);
 
             // Load the information about this user
             $this->LoginServices($userid);
-            
+
             return true;
         }
     }
 
     /**
      * Login a user
-     * @return 
+     * @return
      * @param $username Object
      * @param $password Object
      */
-    function login($username, $password) 
+    function login($username, $password)
     {
         $db =& $this->db;
 
         Kit::ClassLoader('userdata');
-        
+
         // Get the SALT for this username
         if (!$userInfo = $db->GetSingleRow(sprintf("SELECT UserID, UserName, UserPassword, UserTypeID, CSPRNG FROM `user` WHERE UserName = '%s'", $db->escape_string($username)))) {
             setMessage(__('Username or Password incorrect'));
@@ -132,14 +142,14 @@ class User {
             $userData->ChangePassword(Kit::ValidateParam($userInfo['UserID'], _INT), null, $password, $password, true /* Force Change */);
         }
         else {
-            
+
             // Check the users password using the random SALTED password
             if ($userData->validate_password($password, $userInfo['UserPassword']) === false) {
                 setMessage(__('Username or Password incorrect'));
                 return false;
             }
         }
-        
+
         // there is a result so we store the userID in the session variable
         $_SESSION['userid'] = Kit::ValidateParam($userInfo['UserID'], _INT);
         $_SESSION['username'] = Kit::ValidateParam($userInfo['UserName'], _USERNAME);
@@ -152,7 +162,7 @@ class User {
         // update the db
         // write out to the db that the logged in user has accessed the page
         $SQL = sprintf("UPDATE user SET lastaccessed = '" . date("Y-m-d H:i:s") . "', loggedin = 1 WHERE userid = %d", $_SESSION['userid']);
-        
+
         $db->query($SQL) or trigger_error(__('Can not write last accessed info.'), E_USER_ERROR);
 
         // Switch Session ID's
@@ -193,14 +203,14 @@ class User {
 
     /**
      * Logout the user associated with this user object
-     * @return 
+     * @return
      */
-    function logout() 
+    function logout()
     {
         $db         =& $this->db;
         global $session;
-        
-        $userid = Kit::GetParam('userid', _SESSION, _INT);
+
+        $userid = $this->userid;
 
         //write out to the db that the logged in user has accessed the page still
         $SQL = sprintf("UPDATE user SET loggedin = 0 WHERE userid = %d", $userid);
@@ -210,45 +220,50 @@ class User {
         unset($_SESSION['userid']);
         unset($_SESSION['username']);
         unset($_SESSION['password']);
-        
+
         $session->setIsExpired(1);
 
         return true;
     }
 
     //Check to see if a user id is in the session information
-    function checkforUserid() 
+    function checkforUserid()
     {
         $db         =& $this->db;
         global $session;
-        
-        $userid = Kit::GetParam('userid', _SESSION, _INT, 0);
+
+        $userid = $this->userid;
 
         // Checks for a user ID in the session variable
-        if($userid == 0) 
+        if($userid == 0)
         {
             return false;
         }
-        else 
+        else
         {
-            if(!is_numeric($_SESSION['userid'])) 
+            if(!is_numeric($userid))
             {
                 unset($_SESSION['userid']);
                 return false;
             }
-            elseif ($session->isExpired == 1) 
+            elseif (!defined('CAKEPHP') && $session->isExpired == 1)
             {
                 unset($_SESSION['userid']);
                 return false;
             }
-            else 
+            else
             {
-                // check to see that the ID is still valid
-                $SQL = sprintf("SELECT UserID FROM user WHERE loggedin = 1 AND userid = %d", $userid);
-                
+                if (defined('CAKEPHP')) {
+                    // check to see that the ID is still valid
+                    $SQL = sprintf("SELECT UserID FROM user WHERE userid = %d", $userid);
+                } else {
+                    // check to see that the ID is still valid
+                    $SQL = sprintf("SELECT UserID FROM user WHERE loggedin = 1 AND userid = %d", $userid);
+                }
+
                 $result = $db->query($SQL) or trigger_error($db->error(), E_USER_ERROR);
-                
-                if($db->num_rows($result)==0) 
+
+                if($db->num_rows($result)==0)
                 {
                     unset($_SESSION['userid']);
                     return false;
@@ -257,24 +272,24 @@ class User {
             }
         }
     }
-    
-    function getNameFromID($id) 
+
+    function getNameFromID($id)
     {
         $db         =& $this->db;
-        
+
         $SQL = sprintf("SELECT username FROM user WHERE userid = %d", $id);
-        
+
         if(!$results = $db->query($SQL)) trigger_error("Unknown user id in the system", E_USER_NOTICE);
-        
+
         // if no user is returned
-        if ($db->num_rows($results) == 0) 
+        if ($db->num_rows($results) == 0)
         {
             // assume that is the xibo_admin
             return "None";
         }
 
         $row = $db->get_row($results);
-        
+
         return $row[0];
     }
 
@@ -343,10 +358,10 @@ class User {
             return $groups;
     }
 
-    function getGroupFromID($id, $returnID = false) 
+    function getGroupFromID($id, $returnID = false)
     {
             $db =& $this->db;
-        
+
             $SQL  = "";
             $SQL .= "SELECT group.group, ";
             $SQL .= "       group.groupID ";
@@ -357,13 +372,13 @@ class User {
             $SQL .= "       ON     group.groupID       = lkusergroup.GroupID ";
             $SQL .= sprintf("WHERE  `user`.userid                     = %d ", $id);
             $SQL .= "AND    `group`.IsUserSpecific = 1";
-        
+
             if(!$results = $db->query($SQL))
             {
                 trigger_error($db->error());
                 trigger_error("Error looking up user information (group)", E_USER_ERROR);
             }
-        
+
             if ($db->num_rows($results) == 0)
             {
                 // Every user should have a group?
@@ -394,59 +409,59 @@ class User {
             }
             return $row[0];
     }
-    
-    function getUserTypeFromID($id, $returnID = false) 
+
+    function getUserTypeFromID($id, $returnID = false)
     {
         $db         =& $this->db;
-        
+
         $SQL = sprintf("SELECT usertype.usertype, usertype.usertypeid FROM user INNER JOIN usertype ON usertype.usertypeid = user.usertypeid WHERE userid = %d", $id);
-        
-        if(!$results = $db->query($SQL)) 
+
+        if(!$results = $db->query($SQL))
         {
             trigger_error("Error looking up user information (usertype)");
             trigger_error($db->error());
         }
-        
-        if ($db->num_rows($results)==0) 
+
+        if ($db->num_rows($results)==0)
         {
-            if ($returnID) 
+            if ($returnID)
             {
                 return "3";
             }
             return "User";
         }
-        
+
         $row = $db->get_row($results);
-        
-        if ($returnID) 
+
+        if ($returnID)
         {
             return $row[1];
         }
         return $row[0];
     }
-    
-    function getEmailFromID($id) 
+
+    function getEmailFromID($id)
     {
         $db         =& $this->db;
-        
+
         $SQL = sprintf("SELECT email FROM user WHERE userid = %d", $id);
-        
+
         if(!$results = $db->query($SQL)) trigger_error("Unknown user id in the system", E_USER_NOTICE);
-        
-        if ($db->num_rows($results)==0) 
+
+        if ($db->num_rows($results)==0)
         {
             $SQL = "SELECT email FROM user WHERE userid = 1";
-        
-            if(!$results = $db->query($SQL)) 
+
+            if(!$results = $db->query($SQL))
             {
                 trigger_error("Unknown user id in the system [$id]");
             }
         }
-        
+
         $row = $db->get_row($results);
         return $row[1];
     }
-    
+
     /**
          * Gets the homepage for the given userid
          * @param <type> $userId
@@ -463,11 +478,11 @@ class User {
 
             return $homepage;
     }
-    
+
     /**
      * Authenticates the page given against the user credentials held.
      * TODO: Would like to improve performance here by making these credentials cached
-     * @return 
+     * @return
      * @param $page Object
      */
     public function PageAuth($page)
@@ -478,21 +493,21 @@ class User {
 
         // Check the page exists
         $dbh = PDOConnect::init();
-    
+
         $sth = $dbh->prepare('SELECT pageID FROM `pages` WHERE name = :name');
         $sth->execute(array('name' => $page));
-      
+
         $pageId = $sth->fetchColumn();
 
         if ($pageId == '') {
             Debug::LogEntry('audit', 'Blocked assess to unrecognised page: ' . $page . '.', 'index', 'PageAuth');
             throw new Exception(__('Requested page does not exist'));
         }
-        
+
         // Check the security
         if ($usertype == 1)
             return true;
-        
+
         // We have access to only the pages assigned to this group
         try {
             $dbh = PDOConnect::init();
@@ -502,29 +517,29 @@ class User {
             $SQL .= "    INNER JOIN `lkusergroup` ";
             $SQL .= "    ON lkpagegroup.groupID = lkusergroup.GroupID ";
             $SQL .= " WHERE lkusergroup.UserID = :userid AND pageid = :pageid";
-        
+
             $sth = $dbh->prepare($SQL);
             $sth->execute(array(
                     'userid' => $userid,
                     'pageid' => $pageId
                 ));
-                
+
             $results = $sth->fetchAll();
 
             return (count($results) > 0);
         }
         catch (Exception $e) {
-            
+
             Debug::LogEntry('error', $e->getMessage());
-        
+
             return false;
         }
     }
-    
+
     /**
      * Return a Menu for this user
      * TODO: Would like to cache this menu array for future requests
-     * @return 
+     * @return
      * @param $menu Object
      */
     public function MenuAuth($menu)
@@ -532,9 +547,9 @@ class User {
         $db         =& $this->db;
         $userid     =& $this->userid;
         $usertypeid     =& $this->usertypeid;
-        
+
         //Debug::LogEntry('audit', sprintf('Authing the menu for usertypeid [%d]', $usertypeid));
-        
+
         // Get some information about this menu
         // I.e. get the Menu Items this user has access to
         $SQL  = "";
@@ -549,7 +564,7 @@ class User {
         $SQL .= "         ON       menuitem.MenuID = menu.MenuID ";
         $SQL .= "         INNER JOIN pages ";
         $SQL .= "         ON       pages.pageID = menuitem.PageID ";
-        if ($usertypeid != 1) 
+        if ($usertypeid != 1)
         {
             $SQL .= "       INNER JOIN lkmenuitemgroup ";
             $SQL .= "       ON       lkmenuitemgroup.MenuItemID = menuitem.MenuItemID ";
@@ -559,26 +574,26 @@ class User {
                         $SQL .= "       ON     group.groupID       = lkusergroup.GroupID ";
         }
         $SQL .= sprintf("WHERE    menu.Menu              = '%s' ", $db->escape_string($menu));
-        if ($usertypeid != 1) 
+        if ($usertypeid != 1)
         {
             $SQL .= sprintf(" AND lkusergroup.UserID = %d", $userid);
         }
         $SQL .= " ORDER BY menuitem.Sequence";
-        
-        
+
+
         if (!$result = $db->query($SQL))
         {
             trigger_error($db->error());
-            
+
             return false;
         }
-        
+
         // No permissions to see any of it
         if ($db->num_rows($result) == 0)
         {
             return false;
         }
-        
+
         $theMenu = array();
 
         // Load the results into a menu array
@@ -586,10 +601,10 @@ class User {
         {
             $theMenu[] = $row;
         }
-        
+
         return $theMenu;
     }
-    
+
     /**
      * Authenticates this user against the given module
      * or if none provided returns an array of optional modules
@@ -621,23 +636,23 @@ class User {
                 $SQL .= " AND Module = :module ";
                 $params['module'] = $module;
             }
-            
+
             $SQL .= "  ORDER BY Name ";
-        
+
             $sth = $dbh->prepare($SQL);
             $sth->execute($params);
 
             $modules = $sth->fetchAll();
-            
+
             if (count($modules) == 0) {
                 return false;
             }
-            
+
             // Return this array
-            return $modules;  
+            return $modules;
         }
         catch (Exception $e) {
-            
+
             Debug::LogEntry('error', $e->getMessage());
 
             return false;
@@ -672,29 +687,29 @@ class User {
                 $params['id'] = Kit::GetParam('name', $filter_by, _STRING);
                 $SQL .= ' AND name = :name ';
             }
-            
+
             // Sorting?
             if (is_array($sort_order))
                 $SQL .= 'ORDER BY ' . implode(',', $sort_order);
-        
+
             //Debug::LogEntry('audit', 'SQL: ' . $SQL . '. Params: ' . var_export($params, true), get_class(), __FUNCTION__);
 
             $sth = $dbh->prepare($SQL);
             $sth->execute($params);
-          
+
             return $sth->fetchAll();
         }
         catch (Exception $e) {
-            
+
             Debug::LogEntry('error', $e->getMessage());
-        
+
             return false;
         }
     }
-    
+
     /**
      * Returns the usertypeid for this user object.
-     * @return 
+     * @return
      */
     public function GetUserTypeID()
     {
@@ -716,7 +731,7 @@ class User {
 
             return false;
         }
-        
+
         return ($userId == $this->userid);
     }
 
@@ -945,7 +960,7 @@ class User {
      * Returns an array of layouts that this user has access to
      */
     public function LayoutList($sort_order = array('layout'), $filter_by = array()) {
-        
+
         $layouts = Layout::Entries($sort_order, $filter_by);
         $parsedLayouts = array();
 
@@ -964,7 +979,7 @@ class User {
             $layoutItem['status'] = $row->status;
             $layoutItem['backgroundImageId'] = $row->backgroundImageId;
             $layoutItem['mediaownerid'] = $row->mediaOwnerId;
-            
+
             // Details for media assignment
             $layoutItem['regionid'] = $row->regionId;
             $layoutItem['lklayoutmediaid'] = $row->lkLayoutMediaId;
@@ -985,7 +1000,7 @@ class User {
                 $layoutItem['edit'] = (int) $auth->edit;
                 $layoutItem['del'] = (int) $auth->del;
                 $layoutItem['modifyPermissions'] = (int) $auth->modifyPermissions;
-                
+
                 $parsedLayouts[] = $layoutItem;
             }
         }
@@ -1010,7 +1025,7 @@ class User {
     public function ResolutionList($sort_order = array('resolution'), $filter_by = array()) {
         try {
             $dbh = PDOConnect::init();
-        
+
             $params = array();
             $SQL = 'SELECT * FROM resolution WHERE enabled = 1 ';
 
@@ -1028,13 +1043,13 @@ class User {
 
             $sth = $dbh->prepare($SQL);
             $sth->execute($params);
-          
+
             $results = $sth->fetchAll();
             $resolutions = array();
 
             foreach ($results as $row) {
                 $res = array();
-                
+
                 $res['resolutionid'] = Kit::ValidateParam($row['resolutionID'], _INT);
                 $res['resolution'] = Kit::ValidateParam($row['resolution'], _STRING);
                 $res['width'] = Kit::ValidateParam($row['width'], _INT);
@@ -1050,9 +1065,9 @@ class User {
             return $resolutions;
         }
         catch (Exception $e) {
-            
+
             Debug::LogEntry('error', $e->getMessage());
-        
+
             return false;
         }
     }
@@ -1140,7 +1155,7 @@ class User {
             $dataSetItem['dataset']   = Kit::ValidateParam($row['DataSet'], _STRING);
             $dataSetItem['description'] = Kit::ValidateParam($row['Description'], _STRING);
             $dataSetItem['ownerid']  = Kit::ValidateParam($row['UserID'], _INT);
-            
+
             $auth = $this->DataSetAuth($dataSetItem['datasetid'], true);
 
             if ($auth->view)
@@ -1206,7 +1221,7 @@ class User {
 
     /**
      * Authenticates the current user and returns an array of display groups this user is authenticated on
-     * @return 
+     * @return
      */
     public function DisplayGroupList($isDisplaySpecific = 0, $name = '')
     {
@@ -1225,9 +1240,9 @@ class User {
             $SQL .= "   INNER JOIN lkdisplaydg ";
             $SQL .= "   ON lkdisplaydg.DisplayGroupID = displaygroup.DisplayGroupID ";
         }
-        
+
         $SQL .= " WHERE 1 = 1 ";
-        
+
         if ($name != '')
         {
             // convert into a space delimited array
@@ -1242,12 +1257,12 @@ class User {
                     $SQL.= " AND  (displaygroup.DisplayGroup LIKE '%" . sprintf('%s', $db->escape_string($searchName)) . "%') ";
             }
         }
-        
+
         if ($isDisplaySpecific != -1)
             $SQL .= sprintf(" AND displaygroup.IsDisplaySpecific = %d ", $isDisplaySpecific);
 
         $SQL .= " ORDER BY displaygroup.DisplayGroup ";
-        
+
         Debug::LogEntry('audit', sprintf('Retreiving list of displaygroups for %s with SQL: %s', $this->userName, $SQL));
 
         if (!$result = $this->db->query($SQL))
@@ -1407,7 +1422,7 @@ class User {
         return $displays;
 
     }
-    
+
     /**
      * Authorises a user against a campaign
      * @param <type> $campaignId
@@ -1475,7 +1490,7 @@ class User {
         $SQL .= "   LEFT OUTER JOIN `layout` ";
         $SQL .= "   ON lkcampaignlayout.LayoutID = layout.LayoutID ";
         $SQL .= " WHERE 1 = 1 ";
-        
+
         if ($name != '')
         {
             // convert into a space delimited array
@@ -1490,7 +1505,7 @@ class User {
                     $SQL.= " AND  (campaign.Campaign LIKE '%" . sprintf('%s', $db->escape_string($searchName)) . "%') ";
             }
         }
-        
+
         $SQL .= "GROUP BY campaign.CampaignID, Campaign, IsLayoutSpecific ";
         $SQL .= "ORDER BY Campaign";
 
@@ -1532,7 +1547,7 @@ class User {
 
         return $campaigns;
     }
-    
+
     /**
      * Get a list of transitions
      * @param string in/out
@@ -1551,38 +1566,38 @@ class User {
         $SQL .= '   AvailableAsOut ';
         $SQL .= '  FROM `transition` ';
         $SQL .= ' WHERE 1 = 1 ';
-        
+
         if ($type != '')
         {
             // Filter on type
             if ($type == 'in')
                 $SQL .= '  AND AvailableAsIn = 1 ';
-            
+
             if ($type == 'out')
                 $SQL .= '  AND AvailableAsOut = 1 ';
         }
-        
+
         if ($code != '')
         {
             // Filter on code
             $SQL .= sprintf("AND Code = '%s' ", $this->db->escape_string($code));
         }
-        
+
         $SQL .= ' ORDER BY Transition ';
 
         $rows = $this->db->GetArray($SQL);
-        
+
         if (!is_array($rows)) {
             trigger_error($this->db->error());
             return false;
         }
-        
+
         $transitions = array();
 
         foreach ($rows as $transition)
         {
             $transitionItem = array();
-            
+
             $transitionItem['transitionid'] = Kit::ValidateParam($transition['TransitionID'], _INT);
             $transitionItem['transition'] = Kit::ValidateParam($transition['Transition'], _STRING);
             $transitionItem['code'] = Kit::ValidateParam($transition['Code'], _WORD);
@@ -1605,10 +1620,10 @@ class User {
 
         try {
             $dbh = PDOConnect::init();
-        
+
             $params = array();
             $SQL  = 'SELECT displayprofileid, name, type, config, isdefault, userid FROM displayprofile ';
-        
+
             $type = Kit::GetParam('type', $filter_by, _WORD);
             if (!empty($type)) {
                 $SQL .= ' WHERE type = :type ';
@@ -1618,15 +1633,15 @@ class User {
             // Sorting?
             if (is_array($sort_order))
                 $SQL .= 'ORDER BY ' . implode(',', $sort_order);
-    
+
             $sth = $dbh->prepare($SQL);
             $sth->execute($params);
-                
+
             $profiles = array();
-    
+
             while ($row = $sth->fetch()) {
                 $displayItem = array();
-    
+
                 // Validate each param and add it to the array.
                 $displayItem['displayprofileid'] = Kit::ValidateParam($row['displayprofileid'], _INT);
                 $displayItem['name'] = Kit::ValidateParam($row['name'], _STRING);
@@ -1634,27 +1649,27 @@ class User {
                 $displayItem['config'] = Kit::ValidateParam($row['config'], _STRING);
                 $displayItem['isdefault'] = Kit::ValidateParam($row['isdefault'], _INT);
                 $displayItem['userid'] = Kit::ValidateParam($row['userid'], _INT);
-    
+
                 $auth = new PermissionManager($this);
-                
+
                 // If we are the owner, or a super admin then give full permissions
                 if ($this->usertypeid != 1 && $this->userid != $displayItem['userid'])
                     continue;
-    
+
                 $displayItem['view'] = 1;
                 $displayItem['edit'] = 1;
                 $displayItem['del'] = 1;
                 $displayItem['modifypermissions'] = 1;
-    
+
                 $profiles[] = $displayItem;
             }
-    
-            return $profiles;  
+
+            return $profiles;
         }
         catch (Exception $e) {
-            
+
             Debug::LogEntry('error', $e->getMessage(), get_class(), __FUNCTION__);
-        
+
             return false;
         }
     }
@@ -1687,7 +1702,7 @@ class User {
                 $userItem['lastaccessed'] = $row->lastAccessed;
                 $userItem['loggedin'] = $row->loggedIn;
                 $userItem['retired'] = $row->retired;
-                
+
                 // Add to the collection
                 $parsedUser[] = $userItem;
             }

@@ -8,7 +8,7 @@
  * Xibo is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
- * any later version. 
+ * any later version.
  *
  * Xibo is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -43,7 +43,6 @@ require_once("lib/app/datemanager.class.php");
 require_once("lib/app/app_functions.php");
 require_once("lib/data/data.class.php");
 require_once("lib/modules/module.interface.php");
-require_once("lib/modules/modulefactory.class.php");
 require_once("lib/modules/module.class.php");
 require_once("lib/app/session.class.php");
 require_once("lib/app/cache.class.php");
@@ -57,7 +56,7 @@ require_once("config/config.class.php");
 require_once("config/db_config.php");
 
 // Sort out Magic Quotes
-if (get_magic_quotes_gpc()) 
+if (get_magic_quotes_gpc())
 {
     function stripslashes_deep($value)
     {
@@ -80,7 +79,7 @@ if (get_magic_quotes_gpc())
  *  a) This is a first time install
  *  b) This is a corrupt or failed install
  */
-if (!file_exists("settings.php")) 
+if (!file_exists("settings.php"))
 {
 	Kit::Redirect("install.php");
 	die();
@@ -136,7 +135,7 @@ else {
 }
 
 // What is the production mode of the server?
-if(Config::GetSetting('SERVER_MODE') == 'Test') 
+if(Config::GetSetting('SERVER_MODE') == 'Test')
     ini_set('display_errors', 1);
 
 // Debugging?
@@ -145,6 +144,17 @@ if (Debug::getLevel(Config::GetSetting('audit')) == 10)
 
 // Setup the translations for gettext
 TranslationEngine::InitLocale();
+
+// Create a Session
+$session = new Session();
+
+$userId = Kit::GetParam('userid', _SESSION, _INT);
+
+if (!$userId) {
+    if (!empty($_COOKIE['CakeCookie']['xiboId']) && !empty($_GET['p']) && $_GET['p'] == 'schedule') {
+        DEFINE('CAKEPHP', true);
+    }
+}
 
 // Create login control system
 require_once('modules/' . Config::GetSetting("userModule"));
@@ -171,9 +181,6 @@ if (DBVERSION != WEBSITE_VERSION && !($page == 'index' && $function == 'login'))
     }
 }
 
-// Create a Session
-$session = new Session();
-
 // Work out the location of this service
 $serviceLocation = Kit::GetXiboRoot();
 
@@ -190,7 +197,7 @@ $user = new User($db);
 try {
     $pageManager = new PageManager($db, $user, $page);
     $pageManager->Authenticate();
-    $pageManager->Render();    
+    $pageManager->Render();
 }
 catch (Exception $e) {
     trigger_error($e->getMessage(), E_USER_ERROR);
